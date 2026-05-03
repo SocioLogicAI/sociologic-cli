@@ -34,8 +34,8 @@ export async function install(client: string, options: { global?: boolean }): Pr
     // File doesn't exist or is invalid — start fresh
   }
 
-  // 5. Merge server entry
-  const merged = mergeServerEntry(existingConfig, clientConfig);
+  // 5. Merge server entry (embed API key directly if available)
+  const merged = mergeServerEntry(existingConfig, clientConfig, apiKey);
 
   // 6. Create directory if needed
   const dir = path.dirname(configPath);
@@ -49,6 +49,9 @@ export async function install(client: string, options: { global?: boolean }): Pr
   // 8. Print success
   console.log(success(`MCP config written to ${configPath}`));
 
-  // 9. Print hint
-  console.log(dim("Set SOCIOLOGIC_KEY in your environment to authenticate with the relay."));
+  if (apiKey) {
+    console.log(dim("API key embedded in config. Ready to use."));
+  } else {
+    console.log(dim("No API key found. Run `sociologic login` first, then re-run this command."));
+  }
 }

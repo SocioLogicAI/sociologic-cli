@@ -67,19 +67,24 @@ export function getSupportedClients(): string[] {
   return Object.keys(clients);
 }
 
-export function getSociologicServerEntry(): {
-  url: string;
-  env: { SOCIOLOGIC_KEY: string };
-} {
-  return {
+export function getSociologicServerEntry(apiKey?: string): Record<string, unknown> {
+  const entry: Record<string, unknown> = {
     url: SIGNAL_RELAY_URL,
-    env: { SOCIOLOGIC_KEY: "${SOCIOLOGIC_KEY}" },
   };
+
+  if (apiKey) {
+    entry.headers = { "X-API-Key": apiKey };
+  } else {
+    entry.env = { SOCIOLOGIC_KEY: "${SOCIOLOGIC_KEY}" };
+  }
+
+  return entry;
 }
 
 export function mergeServerEntry(
   existingConfig: Record<string, unknown>,
   client: ClientConfig,
+  apiKey?: string,
 ): Record<string, unknown> {
   const serverKey = client.serverKey;
   const existing = (existingConfig[serverKey] ?? {}) as Record<string, unknown>;
@@ -87,7 +92,7 @@ export function mergeServerEntry(
     ...existingConfig,
     [serverKey]: {
       ...existing,
-      sociologic: getSociologicServerEntry(),
+      sociologic: getSociologicServerEntry(apiKey),
     },
   };
 }

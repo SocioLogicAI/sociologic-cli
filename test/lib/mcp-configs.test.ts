@@ -8,10 +8,18 @@ import {
 
 describe("mcp-configs", () => {
   describe("getSociologicServerEntry", () => {
-    it("returns correct server entry", () => {
+    it("returns env var reference when no key provided", () => {
       const entry = getSociologicServerEntry();
       expect(entry.url).toBe(SIGNAL_RELAY_URL);
-      expect(entry.env.SOCIOLOGIC_KEY).toBe("${SOCIOLOGIC_KEY}");
+      expect(entry.env).toEqual({ SOCIOLOGIC_KEY: "${SOCIOLOGIC_KEY}" });
+      expect(entry.headers).toBeUndefined();
+    });
+
+    it("embeds API key in headers when provided", () => {
+      const entry = getSociologicServerEntry("pl_live_test123");
+      expect(entry.url).toBe(SIGNAL_RELAY_URL);
+      expect(entry.headers).toEqual({ "X-API-Key": "pl_live_test123" });
+      expect(entry.env).toBeUndefined();
     });
   });
 

@@ -4,9 +4,11 @@
   "description": "CLI for the SocioLogic verified agent network",
   "license": "MIT",
   "bin": {
-    "sociologic": "./dist/index.js"
+    "sociologic": "dist/index.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "scripts": {
     "build": "tsup",
@@ -31,7 +33,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/SocioLogicAI/sociologic-cli.git"
+    "url": "git+https://github.com/SocioLogicAI/sociologic-cli.git"
   },
-  "keywords": ["cli", "agents", "mcp", "x402", "verified-agents"]
+  "keywords": [
+    "cli",
+    "agents",
+    "mcp",
+    "x402",
+    "verified-agents"
+  ]
 }
