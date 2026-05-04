@@ -1,6 +1,6 @@
 {
   "name": "sociologic",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "CLI for the SocioLogic verified agent network",
   "license": "MIT",
   "bin": {
