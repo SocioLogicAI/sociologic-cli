@@ -8,6 +8,7 @@ import { agents } from "./commands/agents.js";
 import { whoami } from "./commands/whoami.js";
 import { doctor } from "./commands/doctor.js";
 import { register } from "./commands/register.js";
+import { operations } from "./commands/operations.js";
 
 const program = new Command();
 
@@ -89,6 +90,13 @@ program
   .option("--homepage-url <url>", "Homepage URL for the agent")
   .action(async (openapiSpecUrl, options) => {
     await register(openapiSpecUrl, options);
+  });
+
+program
+  .command("operations <agent>")
+  .description("List available operations for an agent")
+  .action(async (agent) => {
+    await operations(agent);
   });
 
 program.parse();
