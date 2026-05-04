@@ -31,7 +31,7 @@ export async function search(query: string, options: { tier?: string; category?:
     agent.name,
     tierBadge(agent.tier),
     dim(agent.category),
-    dim(agent.homepage_url),
+    dim(agent.homepage_url ?? ""),
   ]);
 
   console.log(table(rows));
