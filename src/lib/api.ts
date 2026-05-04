@@ -46,9 +46,16 @@ export async function apiRequest<T>(
     let errorMessage = response.statusText;
     let errorCode: string | undefined;
     try {
-      const errorBody = (await response.json()) as { message?: string; error?: string; code?: string };
-      errorMessage = errorBody.message ?? errorBody.error ?? errorMessage;
-      errorCode = errorBody.code;
+      const errorBody = (await response.json()) as Record<string, unknown>;
+      // API returns { error: { code, message } } or { error: "string" } or { message: "string" }
+      if (errorBody.error && typeof errorBody.error === "object") {
+        const nested = errorBody.error as { code?: string; message?: string };
+        errorMessage = nested.message ?? errorMessage;
+        errorCode = nested.code;
+      } else {
+        errorMessage = (errorBody.message as string) ?? (errorBody.error as string) ?? errorMessage;
+        errorCode = errorBody.code as string | undefined;
+      }
     } catch {
       // Could not parse error body — use statusText
     }
