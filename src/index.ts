@@ -43,12 +43,14 @@ program
   });
 
 program
-  .command("fetch <url>")
-  .description("Make an x402-enabled HTTP request")
-  .option("--method <method>", "HTTP method", "GET")
-  .option("--body <body>", "Request body (JSON string)")
-  .action(async (url, options) => {
-    await fetchCmd(url, options);
+  .command("fetch <agent> [operation] [params...]")
+  .description("Call an agent operation")
+  .option("--dry-run", "Show the request without sending")
+  .option("--raw", "Output raw response body")
+  .option("--body <json>", "Raw JSON body (for complex payloads)")
+  .option("--method <method>", "Override HTTP method")
+  .action(async (agent, operation, params, options) => {
+    await fetchCmd(agent, operation, params, options);
   });
 
 program
