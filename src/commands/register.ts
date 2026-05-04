@@ -4,18 +4,41 @@ import { success, error, dim, table } from "../lib/output.js";
 interface EndpointResult {
   path: string;
   method: string;
-  status_code: number;
-  response_time_ms: number;
-  pass: boolean;
+  status_code: number | null;
+  response_time_ms: number | null;
+  passed: boolean;
+  error?: string;
 }
 
-interface RegisterResponse {
-  status: "passed" | "failed";
-  slug?: string;
-  endpoints_tested: number;
-  endpoints_passed: number;
-  results: EndpointResult[];
+interface SmokeTestResults {
+  passed: boolean;
+  tested_at: string;
+  endpoints: EndpointResult[];
+  summary: { total: number; passed: number; failed: number };
+  error?: string;
 }
+
+interface RegisterResponsePassed {
+  status: "passed";
+  submission_id: string;
+  listing: {
+    slug: string;
+    name: string;
+    tier: string;
+    category: string;
+    base_url: string | null;
+  };
+  smoke_test_results: SmokeTestResults;
+}
+
+interface RegisterResponseFailed {
+  status: "failed";
+  submission_id: string;
+  smoke_test_results: SmokeTestResults;
+  message: string;
+}
+
+type RegisterResponse = RegisterResponsePassed | RegisterResponseFailed;
 
 interface RegisterOptions {
   name: string;
@@ -51,27 +74,38 @@ export async function register(openapiSpecUrl: string, options: RegisterOptions)
       },
     });
 
-    const endpointRows = result.results.map((ep) => [
+    const smokeResults = result.smoke_test_results;
+    const { summary } = smokeResults;
+
+    const endpointRows = smokeResults.endpoints.map((ep) => [
       ep.method.toUpperCase(),
       ep.path,
-      String(ep.status_code),
-      `${ep.response_time_ms}ms`,
-      ep.pass ? success("pass") : error("fail"),
+      ep.status_code != null ? String(ep.status_code) : "-",
+      ep.response_time_ms != null ? `${ep.response_time_ms}ms` : "n/a",
+      ep.passed ? success("pass") : error(ep.error || "fail"),
     ]);
 
     if (result.status === "passed") {
       console.log(success("Agent registered as unverified"));
-      if (result.slug) {
-        console.log(`  Slug: ${result.slug}`);
+      console.log(`  Slug: ${result.listing.slug}`);
+      console.log(`  Endpoints tested: ${summary.passed}/${summary.total} passed`);
+      if (endpointRows.length > 0) {
+        console.log();
+        console.log(table(endpointRows));
       }
-      console.log(`  Endpoints tested: ${result.endpoints_passed}/${result.endpoints_tested} passed`);
-      console.log();
-      console.log(table(endpointRows));
     } else {
       console.error(error("Smoke tests failed"));
-      console.log(`  Endpoints tested: ${result.endpoints_passed}/${result.endpoints_tested} passed`);
-      console.log();
-      console.log(table(endpointRows));
+      if (smokeResults.error) {
+        console.log(`  ${smokeResults.error}`);
+      }
+      console.log(`  Endpoints tested: ${summary.passed}/${summary.total} passed`);
+      if (result.message && !smokeResults.error) {
+        console.log(`  ${result.message}`);
+      }
+      if (endpointRows.length > 0) {
+        console.log();
+        console.log(table(endpointRows));
+      }
       console.log();
       console.log(dim("Fix the failing endpoints and resubmit."));
       process.exitCode = 1;
