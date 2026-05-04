@@ -158,7 +158,13 @@ export function resolveOperation(
     );
   }
 
-  const isFirstParty = baseUrl.startsWith("https://www.sociologic.ai");
+  let isFirstParty = false;
+  try {
+    const hostname = new URL(baseUrl).hostname;
+    isFirstParty = hostname === "sociologic.ai" || hostname.endsWith(".sociologic.ai");
+  } catch {
+    // Invalid URL — treat as third-party
+  }
 
   let matched: SpecOperation | undefined;
 
