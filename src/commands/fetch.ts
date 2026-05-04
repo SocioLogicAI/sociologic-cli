@@ -1,13 +1,16 @@
 import { apiRequest, ApiError } from "../lib/api.js";
 import { resolveAgent } from "../lib/agent-resolver.js";
 import { resolveOperation } from "../lib/spec-resolver.js";
-import { error, warn, dim, bold } from "../lib/output.js";
+import { error, warn, dim, bold, success } from "../lib/output.js";
+import { confirm } from "../lib/prompt.js";
 
 export interface FetchOptions {
   dryRun?: boolean;
   raw?: boolean;
   body?: string;
   method?: string;
+  pay?: boolean;
+  maxCost?: number;
 }
 
 /**
@@ -71,7 +74,7 @@ async function legacyFetch(
 }
 
 /**
- * Display the response, handling meta information and formatting.
+ * Display the response data on stdout, and cost/meta info on stderr.
  */
 function displayResponse(data: unknown, raw: boolean): void {
   if (raw) {
@@ -93,6 +96,122 @@ function displayResponse(data: unknown, raw: boolean): void {
         console.error(dim(`  Balance remaining: $${meta.balance_remaining.toFixed(2)}`));
       }
     }
+  }
+}
+
+/**
+ * Display a paid-call success summary on stderr, then data on stdout.
+ */
+function displayPaidResponse(
+  agentSlug: string,
+  operationId: string | undefined,
+  result: unknown,
+  raw: boolean,
+): void {
+  // Extract meta from the proxy response
+  const meta = (result && typeof result === "object" && "meta" in result)
+    ? (result as Record<string, unknown>).meta as Record<string, unknown> | undefined
+    : undefined;
+
+  // Extract the actual data payload
+  const data = (result && typeof result === "object" && "data" in result)
+    ? (result as Record<string, unknown>).data
+    : result;
+
+  // Print cost summary on stderr
+  if (meta) {
+    const costParts: string[] = [];
+    if (typeof meta.cost_usd === "number") {
+      costParts.push(`Cost: $${meta.cost_usd.toFixed(2)}`);
+    }
+    if (typeof meta.balance_remaining === "number") {
+      costParts.push(`Balance: $${meta.balance_remaining.toFixed(2)}`);
+    }
+    const label = operationId ? `${agentSlug} — ${operationId}` : agentSlug;
+    console.error(success(label));
+    if (costParts.length > 0) {
+      console.error(dim(`  ${costParts.join(" | ")}`));
+    }
+  }
+
+  // Print data on stdout
+  if (raw) {
+    console.log(JSON.stringify(data));
+  } else {
+    console.log(JSON.stringify(data, null, 2));
+  }
+}
+
+/**
+ * Handle a 402 ApiError for third-party proxy calls.
+ * Returns true if the call was retried and succeeded (caller should not set exitCode).
+ */
+async function handlePaymentRequired(
+  err: ApiError,
+  agentSlug: string,
+  operationId: string | undefined,
+  proxyBody: Record<string, unknown>,
+  options: FetchOptions,
+): Promise<boolean> {
+  const details = err.details;
+  const costEstimate = details?.cost_estimate_usd as number | undefined;
+  const balanceUsd = details?.balance_usd as number | undefined;
+
+  // Check for specific error codes
+  if (err.code === "INSUFFICIENT_BALANCE" || err.code === "INSUFFICIENT_FUNDS") {
+    const bal = typeof balanceUsd === "number" ? `$${balanceUsd.toFixed(2)}` : "insufficient";
+    console.error(error(`Insufficient balance (${bal}). Add funds at https://www.sociologic.ai/pricing`));
+    return false;
+  }
+
+  if (err.code === "BUDGET_EXCEEDED") {
+    const cost = typeof costEstimate === "number" ? `$${costEstimate.toFixed(2)}` : "unknown";
+    const limit = typeof options.maxCost === "number" ? `$${options.maxCost.toFixed(2)}` : "unset";
+    console.error(error(`Cost (${cost}) exceeds your limit (${limit}). Use --max-cost to adjust.`));
+    return false;
+  }
+
+  // No cost estimate available — can't prompt
+  if (typeof costEstimate !== "number") {
+    console.error(error("This agent requires payment. Use --pay to enable."));
+    return false;
+  }
+
+  // Build the prompt
+  const costStr = `$${costEstimate.toFixed(2)}`;
+  const balStr = typeof balanceUsd === "number" ? ` Your balance: $${balanceUsd.toFixed(2)}` : "";
+  const proceed = await confirm(`This call costs ~${costStr}.${balStr}\nProceed? (y/n) `);
+
+  if (!proceed) {
+    // User declined — exit cleanly (no error exit code)
+    return true;
+  }
+
+  // Retry with pay: true
+  try {
+    const retryBody: Record<string, unknown> = {
+      ...proxyBody,
+      pay: true,
+      service_slug: agentSlug,
+    };
+    if (typeof options.maxCost === "number") {
+      retryBody.max_cost = options.maxCost;
+    }
+
+    const result = await apiRequest<unknown>("/api/v1/agents/fetch", {
+      method: "POST",
+      body: retryBody,
+    });
+
+    displayPaidResponse(agentSlug, operationId, result, !!options.raw);
+    return true;
+  } catch (retryErr) {
+    if (retryErr instanceof ApiError) {
+      console.error(error(retryErr.message));
+    } else {
+      console.error(error(String(retryErr)));
+    }
+    return false;
   }
 }
 
@@ -192,6 +311,12 @@ export async function fetchCmd(
     if (requestBody !== undefined) {
       console.log(`${bold("Body:")}     ${JSON.stringify(requestBody)}`);
     }
+    if (options.pay) {
+      console.log(`${bold("Pay:")}      enabled`);
+    }
+    if (typeof options.maxCost === "number") {
+      console.log(`${bold("Max cost:")} $${options.maxCost.toFixed(2)}`);
+    }
     console.log();
     return;
   }
@@ -202,8 +327,6 @@ export async function fetchCmd(
 
     if (resolved.isFirstParty) {
       // First-party: call the API directly (authenticated with X-API-Key)
-      // resolved.url is a full URL like https://www.sociologic.ai/api/v1/rng/uuid?...
-      // We need to extract the path portion for apiRequest
       const fullUrl = new URL(resolved.url);
       const pathWithQuery = fullUrl.pathname + fullUrl.search;
 
@@ -211,33 +334,89 @@ export async function fetchCmd(
         method,
         body: requestBody,
       });
+
+      displayResponse(result, !!options.raw);
     } else {
       // Third-party: go through the fetch proxy
+      const proxyBody: Record<string, unknown> = {
+        url: resolved.url,
+        method,
+        body: requestBody,
+      };
+
+      if (options.pay) {
+        // --pay flag: include payment fields upfront
+        proxyBody.pay = true;
+        proxyBody.service_slug = agent.slug;
+        if (typeof options.maxCost === "number") {
+          proxyBody.max_cost = options.maxCost;
+        }
+      }
+
       result = await apiRequest<unknown>("/api/v1/agents/fetch", {
         method: "POST",
-        body: {
-          url: resolved.url,
-          method,
-          body: requestBody,
-        },
+        body: proxyBody,
       });
-    }
 
-    displayResponse(result, !!options.raw);
-  } catch (err) {
-    if (err instanceof ApiError && err.status === 402) {
-      console.error(error("This agent requires payment (x402). Payment support coming soon."));
-      if (err.message && err.message !== "Payment Required") {
-        console.error(dim(`  ${err.message}`));
+      if (options.pay) {
+        displayPaidResponse(agent.slug, resolved.operationId, result, !!options.raw);
+      } else {
+        displayResponse(result, !!options.raw);
       }
+    }
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 402 && !resolved.isFirstParty) {
+      // Payment required for third-party agent
+      const proxyBody: Record<string, unknown> = {
+        url: resolved.url,
+        method,
+        body: requestBody,
+      };
+
+      if (options.pay) {
+        // --pay was set but still got 402 — check for specific error codes
+        if (err.code === "INSUFFICIENT_BALANCE" || err.code === "INSUFFICIENT_FUNDS") {
+          const bal = err.details?.balance_usd;
+          const balStr = typeof bal === "number" ? `$${bal.toFixed(2)}` : "insufficient";
+          console.error(error(`Insufficient balance (${balStr}). Add funds at https://www.sociologic.ai/pricing`));
+        } else if (err.code === "BUDGET_EXCEEDED") {
+          const cost = err.details?.cost_estimate_usd;
+          const costStr = typeof cost === "number" ? `$${cost.toFixed(2)}` : "unknown";
+          const limitStr = typeof options.maxCost === "number" ? `$${options.maxCost.toFixed(2)}` : "unset";
+          console.error(error(`Cost (${costStr}) exceeds your limit (${limitStr}). Use --max-cost to adjust.`));
+        } else {
+          console.error(error("Payment failed."));
+          if (err.message && err.message !== "Payment Required") {
+            console.error(dim(`  ${err.message}`));
+          }
+        }
+        process.exitCode = 1;
+      } else {
+        // No --pay flag: interactive prompt flow
+        const handled = await handlePaymentRequired(
+          err,
+          agent.slug,
+          resolved.operationId,
+          proxyBody,
+          options,
+        );
+        if (!handled) {
+          process.exitCode = 1;
+        }
+      }
+    } else if (err instanceof ApiError && err.status === 503) {
+      console.error(error("Payment service temporarily unavailable."));
+      process.exitCode = 1;
     } else if (err instanceof ApiError && err.status === 403) {
       console.error(error("URL not registered as an agent"));
       console.error(dim("  Hint: use `sociologic search` to find registered agents"));
+      process.exitCode = 1;
     } else if (err instanceof ApiError) {
       console.error(error(err.message));
+      process.exitCode = 1;
     } else {
       console.error(error(String(err)));
+      process.exitCode = 1;
     }
-    process.exitCode = 1;
   }
 }

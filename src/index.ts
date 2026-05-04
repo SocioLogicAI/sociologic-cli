@@ -49,6 +49,8 @@ program
   .option("--raw", "Output raw response body")
   .option("--body <json>", "Raw JSON body (for complex payloads)")
   .option("--method <method>", "Override HTTP method")
+  .option("--pay", "Enable payment for x402 agents (skip confirmation prompt)")
+  .option("--max-cost <amount>", "Maximum cost in USD (budget cap)", parseFloat)
   .action(async (agent, operation, params, options) => {
     await fetchCmd(agent, operation, params, options);
   });
