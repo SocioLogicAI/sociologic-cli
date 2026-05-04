@@ -42,7 +42,6 @@ type RegisterResponse = RegisterResponsePassed | RegisterResponseFailed;
 
 interface RegisterOptions {
   name: string;
-  email: string;
   description?: string;
   iconUrl?: string;
   homepageUrl?: string;
@@ -55,23 +54,18 @@ export async function register(openapiSpecUrl: string, options: RegisterOptions)
     return;
   }
 
-  if (!options.email) {
-    console.error(error("--email is required"));
-    process.exitCode = 1;
-    return;
-  }
-
   try {
+    const body: Record<string, unknown> = {
+      openapi_spec_url: openapiSpecUrl,
+      name: options.name,
+      description: options.description ?? "No description provided",
+    };
+    if (options.iconUrl) body.icon_url = options.iconUrl;
+    if (options.homepageUrl) body.homepage_url = options.homepageUrl;
+
     const result = await apiRequest<RegisterResponse>("/api/v1/agents/register", {
       method: "POST",
-      body: {
-        openapi_spec_url: openapiSpecUrl,
-        name: options.name,
-        description: options.description ?? "No description provided",
-        contact_email: options.email,
-        icon_url: options.iconUrl,
-        homepage_url: options.homepageUrl,
-      },
+      body,
     });
 
     const smokeResults = result.smoke_test_results;
