@@ -6,6 +6,7 @@ interface OperationInfo {
   operationId: string;
   path: string;
   summary: string;
+  price: string;
 }
 
 /**
@@ -25,11 +26,23 @@ function extractOperations(spec: Record<string, unknown>): OperationInfo[] {
       const operation = pathItem[method] as Record<string, unknown> | undefined;
       if (!operation || typeof operation !== "object") continue;
 
+      // Extract x-payment-info pricing if available
+      const paymentInfo = operation["x-payment-info"] as Record<string, unknown> | undefined;
+      let price = "-";
+      if (paymentInfo) {
+        const amount = paymentInfo.price ?? paymentInfo.amount ?? paymentInfo.cost;
+        const currency = (paymentInfo.currency as string) || "USD";
+        if (amount != null) {
+          price = `$${Number(amount).toFixed(2)} ${currency}`;
+        }
+      }
+
       ops.push({
         method: method.toUpperCase(),
         operationId: (operation.operationId as string) || "",
         path: pathStr,
         summary: (operation.summary as string) || (operation.description as string) || "",
+        price,
       });
     }
   }
@@ -69,6 +82,7 @@ export async function operations(agentSlug: string): Promise<void> {
     `  ${bold(op.method.padEnd(6))}`,
     op.operationId || dim("—"),
     dim(op.path),
+    op.price !== "-" ? op.price : dim("-"),
     dim(op.summary),
   ]);
 

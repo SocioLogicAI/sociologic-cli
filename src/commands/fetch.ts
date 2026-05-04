@@ -161,6 +161,7 @@ async function handlePaymentRequired(
   if (err.code === "INSUFFICIENT_BALANCE" || err.code === "INSUFFICIENT_FUNDS") {
     const bal = typeof balanceUsd === "number" ? `$${balanceUsd.toFixed(2)}` : "insufficient";
     console.error(error(`Insufficient balance (${bal}). Add funds at https://www.sociologic.ai/pricing`));
+    console.error(dim("  Run `sociologic balance` to check your current balance."));
     return false;
   }
 
@@ -183,7 +184,9 @@ async function handlePaymentRequired(
   const proceed = await confirm(`This call costs ~${costStr}.${balStr}\nProceed? (y/n) `);
 
   if (!proceed) {
-    // User declined — exit cleanly (no error exit code)
+    // User declined — signal with exit code 2 (distinct from error=1)
+    process.stderr.write("Cancelled.\n");
+    process.exitCode = 2;
     return true;
   }
 
@@ -379,6 +382,7 @@ export async function fetchCmd(
           const bal = err.details?.balance_usd;
           const balStr = typeof bal === "number" ? `$${bal.toFixed(2)}` : "insufficient";
           console.error(error(`Insufficient balance (${balStr}). Add funds at https://www.sociologic.ai/pricing`));
+          console.error(dim("  Run `sociologic balance` to check your current balance."));
         } else if (err.code === "BUDGET_EXCEEDED") {
           const cost = err.details?.cost_estimate_usd;
           const costStr = typeof cost === "number" ? `$${cost.toFixed(2)}` : "unknown";
