@@ -7,6 +7,7 @@ import { balance } from "./commands/balance.js";
 import { agents } from "./commands/agents.js";
 import { whoami } from "./commands/whoami.js";
 import { doctor } from "./commands/doctor.js";
+import { register } from "./commands/register.js";
 
 const program = new Command();
 
@@ -77,6 +78,18 @@ program
   .description("Check CLI configuration and connectivity")
   .action(async () => {
     await doctor();
+  });
+
+program
+  .command("register <openapi-spec-url>")
+  .description("Register an agent by its OpenAPI spec URL")
+  .requiredOption("--name <name>", "Agent display name")
+  .requiredOption("--email <email>", "Contact email for the agent owner")
+  .option("--description <description>", "Agent description")
+  .option("--icon-url <url>", "URL to an icon for the agent")
+  .option("--homepage-url <url>", "Homepage URL for the agent")
+  .action(async (openapiSpecUrl, options) => {
+    await register(openapiSpecUrl, options);
   });
 
 program.parse();
