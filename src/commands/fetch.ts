@@ -9,8 +9,7 @@ export interface FetchOptions {
   raw?: boolean;
   body?: string;
   method?: string;
-  pay?: boolean;
-  maxCost?: number;
+  pay?: number;
 }
 
 /**
@@ -167,21 +166,21 @@ async function handlePaymentRequired(
 
   if (err.code === "BUDGET_EXCEEDED") {
     const cost = typeof costEstimate === "number" ? `$${costEstimate.toFixed(2)}` : "unknown";
-    const limit = typeof options.maxCost === "number" ? `$${options.maxCost.toFixed(2)}` : "unset";
-    console.error(error(`Cost (${cost}) exceeds your limit (${limit}). Use --max-cost to adjust.`));
+    const limit = typeof options.pay === "number" ? `$${options.pay.toFixed(2)}` : "unset";
+    console.error(error(`Cost (${cost}) exceeds your pre-authorized amount (${limit}).`));
     return false;
   }
 
   // No cost estimate available — can't prompt
   if (typeof costEstimate !== "number") {
-    console.error(error("This agent requires payment. Use --pay to enable."));
+    console.error(error("This agent requires payment. Use --pay <amount> to authorize."));
     return false;
   }
 
   // Build the prompt
   const costStr = `$${costEstimate.toFixed(2)}`;
   const balStr = typeof balanceUsd === "number" ? ` Your balance: $${balanceUsd.toFixed(2)}` : "";
-  const proceed = await confirm(`This call costs ~${costStr}.${balStr}\nProceed? (y/n) `);
+  const proceed = await confirm(`This call costs ${costStr}.${balStr}\nProceed? (y/n) `);
 
   if (!proceed) {
     // User declined — signal with exit code 2 (distinct from error=1)
@@ -196,10 +195,8 @@ async function handlePaymentRequired(
       ...proxyBody,
       pay: true,
       service_slug: agentSlug,
+      max_cost: costEstimate,
     };
-    if (typeof options.maxCost === "number") {
-      retryBody.max_cost = options.maxCost;
-    }
 
     const result = await apiRequest<unknown>("/api/v1/agents/fetch", {
       method: "POST",
@@ -314,11 +311,8 @@ export async function fetchCmd(
     if (requestBody !== undefined) {
       console.log(`${bold("Body:")}     ${JSON.stringify(requestBody)}`);
     }
-    if (options.pay) {
-      console.log(`${bold("Pay:")}      enabled`);
-    }
-    if (typeof options.maxCost === "number") {
-      console.log(`${bold("Max cost:")} $${options.maxCost.toFixed(2)}`);
+    if (typeof options.pay === "number") {
+      console.log(`${bold("Pay:")}      up to $${options.pay.toFixed(2)}`);
     }
     console.log();
     return;
@@ -348,12 +342,10 @@ export async function fetchCmd(
       };
 
       if (options.pay) {
-        // --pay flag: include payment fields upfront
+        // --pay <amount>: include payment fields with pre-authorized amount
         proxyBody.pay = true;
         proxyBody.service_slug = agent.slug;
-        if (typeof options.maxCost === "number") {
-          proxyBody.max_cost = options.maxCost;
-        }
+        proxyBody.max_cost = options.pay;
       }
 
       result = await apiRequest<unknown>("/api/v1/agents/fetch", {
@@ -361,7 +353,7 @@ export async function fetchCmd(
         body: proxyBody,
       });
 
-      if (options.pay) {
+      if (typeof options.pay === "number") {
         displayPaidResponse(agent.slug, resolved.operationId, result, !!options.raw);
       } else {
         displayResponse(result, !!options.raw);
@@ -376,7 +368,7 @@ export async function fetchCmd(
         body: requestBody,
       };
 
-      if (options.pay) {
+      if (typeof options.pay === "number") {
         // --pay was set but still got 402 — check for specific error codes
         if (err.code === "INSUFFICIENT_BALANCE" || err.code === "INSUFFICIENT_FUNDS") {
           const bal = err.details?.balance_usd;
@@ -386,8 +378,7 @@ export async function fetchCmd(
         } else if (err.code === "BUDGET_EXCEEDED") {
           const cost = err.details?.cost_estimate_usd;
           const costStr = typeof cost === "number" ? `$${cost.toFixed(2)}` : "unknown";
-          const limitStr = typeof options.maxCost === "number" ? `$${options.maxCost.toFixed(2)}` : "unset";
-          console.error(error(`Cost (${costStr}) exceeds your limit (${limitStr}). Use --max-cost to adjust.`));
+          console.error(error(`Cost (${costStr}) exceeds your pre-authorized amount ($${options.pay.toFixed(2)}).`));
         } else {
           console.error(error("Payment failed."));
           if (err.message && err.message !== "Payment Required") {
