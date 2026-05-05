@@ -120,6 +120,49 @@ function extractOperations(spec: Record<string, unknown>): SpecOperation[] {
 }
 
 /**
+ * Extract declared parameter names from an OpenAPI operation.
+ * Reads both `parameters` (query/path) and `requestBody` schema properties.
+ */
+function getOperationParamNames(
+  spec: Record<string, unknown>,
+  path: string,
+  method: string,
+): string[] {
+  const paths = spec.paths as Record<string, Record<string, unknown>> | undefined;
+  if (!paths) return [];
+
+  const pathItem = paths[path];
+  if (!pathItem) return [];
+
+  const operation = pathItem[method] as Record<string, unknown> | undefined;
+  if (!operation) return [];
+
+  const names: string[] = [];
+
+  // Query/path parameters
+  const parameters = operation.parameters as Array<{ name?: string }> | undefined;
+  if (Array.isArray(parameters)) {
+    for (const p of parameters) {
+      if (p.name) names.push(p.name);
+    }
+  }
+
+  // Request body schema properties (for POST/PUT/PATCH)
+  const requestBody = operation.requestBody as Record<string, unknown> | undefined;
+  if (requestBody) {
+    const content = requestBody.content as Record<string, Record<string, unknown>> | undefined;
+    const jsonContent = content?.["application/json"];
+    const schema = jsonContent?.schema as Record<string, unknown> | undefined;
+    const properties = schema?.properties as Record<string, unknown> | undefined;
+    if (properties) {
+      names.push(...Object.keys(properties));
+    }
+  }
+
+  return names;
+}
+
+/**
  * Resolve an operation string against an agent's OpenAPI spec.
  *
  * Matching order:
@@ -226,6 +269,29 @@ export function resolveOperation(
     throw new Error(
       `No operation "${operation}" found for agent "${agent.slug}".${suggestion}\n\nAvailable operations:\n${available}`,
     );
+  }
+
+  // Validate user params against the spec's declared parameters
+  if (Object.keys(params).length > 0) {
+    const specParams = getOperationParamNames(spec, matched.path, matched.method.toLowerCase());
+    if (specParams.length > 0) {
+      for (const userKey of Object.keys(params)) {
+        if (!specParams.includes(userKey)) {
+          const suggestion = specParams
+            .map((name) => ({ name, dist: editDistance(userKey.toLowerCase(), name.toLowerCase()) }))
+            .sort((a, b) => a.dist - b.dist);
+
+          const hint = suggestion.length > 0 && suggestion[0].dist <= 3
+            ? ` Did you mean "${suggestion[0].name}"?`
+            : "";
+
+          throw new Error(
+            `Unknown parameter "${userKey}" for operation "${matched.operationId || matched.path}".${hint}\n` +
+            `  Valid parameters: ${specParams.join(", ")}`,
+          );
+        }
+      }
+    }
   }
 
   // Build the full URL
