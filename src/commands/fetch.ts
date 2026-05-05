@@ -322,46 +322,32 @@ export async function fetchCmd(
   try {
     let result: unknown;
 
-    if (resolved.isFirstParty) {
-      // First-party: call the API directly (authenticated with X-API-Key)
-      const fullUrl = new URL(resolved.url);
-      const pathWithQuery = fullUrl.pathname + fullUrl.search;
+    // All agents go through the proxy
+    const proxyBody: Record<string, unknown> = {
+      url: resolved.url,
+      method,
+      body: requestBody,
+    };
 
-      result = await apiRequest<unknown>(pathWithQuery, {
-        method,
-        body: requestBody,
-      });
+    if (typeof options.pay === "number") {
+      proxyBody.pay = true;
+      proxyBody.service_slug = agent.slug;
+      proxyBody.max_cost = options.pay;
+    }
 
-      displayResponse(result, !!options.raw);
+    result = await apiRequest<unknown>("/api/v1/agents/fetch", {
+      method: "POST",
+      body: proxyBody,
+    });
+
+    if (typeof options.pay === "number") {
+      displayPaidResponse(agent.slug, resolved.operationId, result, !!options.raw);
     } else {
-      // Third-party: go through the fetch proxy
-      const proxyBody: Record<string, unknown> = {
-        url: resolved.url,
-        method,
-        body: requestBody,
-      };
-
-      if (options.pay) {
-        // --pay <amount>: include payment fields with pre-authorized amount
-        proxyBody.pay = true;
-        proxyBody.service_slug = agent.slug;
-        proxyBody.max_cost = options.pay;
-      }
-
-      result = await apiRequest<unknown>("/api/v1/agents/fetch", {
-        method: "POST",
-        body: proxyBody,
-      });
-
-      if (typeof options.pay === "number") {
-        displayPaidResponse(agent.slug, resolved.operationId, result, !!options.raw);
-      } else {
-        displayResponse(result, !!options.raw);
-      }
+      displayResponse(result, !!options.raw);
     }
   } catch (err) {
-    if (err instanceof ApiError && err.status === 402 && !resolved.isFirstParty) {
-      // Payment required for third-party agent
+    if (err instanceof ApiError && err.status === 402) {
+      // Payment required
       const proxyBody: Record<string, unknown> = {
         url: resolved.url,
         method,
