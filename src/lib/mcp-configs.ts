@@ -14,8 +14,8 @@ const clients: Record<string, ClientConfig> = {
     name: "Claude Code",
     configPath: (global: boolean) =>
       global
-        ? path.join(os.homedir(), ".claude", "mcp.json")
-        : path.join(".claude", "mcp.json"),
+        ? path.join(os.homedir(), ".claude.json")
+        : ".mcp.json",
     serverKey: "mcpServers",
   },
   "claude-desktop": {
