@@ -7,7 +7,7 @@ export interface ClientConfig {
   serverKey: string;
 }
 
-export const SIGNAL_RELAY_URL = "https://mcp.sociologic.ai/sse";
+export const SIGNAL_RELAY_URL = "https://mcp.sociologic.ai/rpc";
 
 const clients: Record<string, ClientConfig> = {
   "claude-code": {
