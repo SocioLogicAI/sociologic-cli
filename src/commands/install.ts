@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
-import { getApiKey } from "../lib/config.js";
+import { getApiKey, getApiBaseUrl, writeConfig } from "../lib/config.js";
+import { provisionAnonymous } from "../lib/auth.js";
 import { getClient, getSupportedClients, mergeServerEntry } from "../lib/mcp-configs.js";
 import { success, error, warn, dim } from "../lib/output.js";
 
@@ -16,10 +17,18 @@ export async function install(client: string, options: { global?: boolean }): Pr
     return;
   }
 
-  // 2. Check for API key
-  const apiKey = getApiKey();
+  // 2. Check for API key — auto-provision anonymous session if missing
+  let apiKey = getApiKey();
   if (!apiKey) {
-    console.log(warn("No API key found. Set SOCIOLOGIC_KEY environment variable or run: sociologic login"));
+    try {
+      const result = await provisionAnonymous(getApiBaseUrl());
+      writeConfig({ api_key: result.api_key, provider: "anonymous" });
+      apiKey = result.api_key;
+      console.log(success("Anonymous session created (1 free credit). Run 'npx sociologic login' to unlock full access."));
+    } catch (err) {
+      console.log(warn(`Auto-provisioning failed: ${err instanceof Error ? err.message : String(err)}`));
+      console.log(warn("No API key found. Run 'npx sociologic login' to authenticate."));
+    }
   }
 
   // 3. Get config path

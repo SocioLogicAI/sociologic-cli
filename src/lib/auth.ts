@@ -19,6 +19,20 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+export async function provisionAnonymous(apiBaseUrl: string): Promise<{ api_key: string; provider: "anonymous"; expires_at: string }> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/auth/anonymous`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error((body as Record<string, Record<string, string>>)?.error?.message || `Anonymous provisioning failed (${response.status})`);
+  }
+
+  return response.json() as Promise<{ api_key: string; provider: "anonymous"; expires_at: string }>;
+}
+
 export async function requestDeviceCode(): Promise<DeviceCodeResponse> {
   const baseUrl = getApiBaseUrl();
   const response = await fetch(`${baseUrl}/api/v1/auth/device-code`, {

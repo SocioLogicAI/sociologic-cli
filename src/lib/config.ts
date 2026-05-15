@@ -7,6 +7,7 @@ export interface SociologicConfig {
   email?: string;
   name?: string;
   api_base_url?: string;
+  provider?: "anonymous" | "github";
 }
 
 function getConfigDir(): string {
