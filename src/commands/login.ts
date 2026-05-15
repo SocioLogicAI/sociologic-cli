@@ -1,5 +1,5 @@
 import { requestDeviceCode, pollDeviceToken } from "../lib/auth.js";
-import { getApiKey, writeConfig } from "../lib/config.js";
+import { readConfig, writeConfig } from "../lib/config.js";
 import * as output from "../lib/output.js";
 
 export async function login(options: { email?: boolean }): Promise<void> {
@@ -30,7 +30,8 @@ export async function login(options: { email?: boolean }): Promise<void> {
 
     console.log(output.dim("Waiting for authorization..."));
 
-    const existingApiKey = getApiKey();
+    const config = readConfig();
+    const existingApiKey = config.provider === "anonymous" ? config.api_key : undefined;
     const result = await pollDeviceToken(device_code, interval, expires_in, existingApiKey);
 
     writeConfig({

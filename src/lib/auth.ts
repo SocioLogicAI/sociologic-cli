@@ -31,7 +31,11 @@ export async function provisionAnonymous(apiBaseUrl: string): Promise<{ api_key:
     throw new Error((body as Record<string, Record<string, string>>)?.error?.message || `Anonymous provisioning failed (${response.status})`);
   }
 
-  return response.json() as Promise<{ api_key: string; provider: "anonymous"; expires_at: string }>;
+  const result = await response.json();
+  if (!result.api_key || typeof result.api_key !== "string") {
+    throw new Error("Invalid response from anonymous provisioning endpoint");
+  }
+  return result as { api_key: string; provider: "anonymous"; expires_at: string };
 }
 
 export async function requestDeviceCode(): Promise<DeviceCodeResponse> {
