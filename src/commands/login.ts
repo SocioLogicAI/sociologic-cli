@@ -1,5 +1,5 @@
 import { requestDeviceCode, pollDeviceToken } from "../lib/auth.js";
-import { writeConfig } from "../lib/config.js";
+import { getApiKey, writeConfig } from "../lib/config.js";
 import * as output from "../lib/output.js";
 
 export async function login(options: { email?: boolean }): Promise<void> {
@@ -30,16 +30,22 @@ export async function login(options: { email?: boolean }): Promise<void> {
 
     console.log(output.dim("Waiting for authorization..."));
 
-    const result = await pollDeviceToken(device_code, interval, expires_in);
+    const existingApiKey = getApiKey();
+    const result = await pollDeviceToken(device_code, interval, expires_in, existingApiKey);
 
     writeConfig({
       api_key: result.api_key,
       email: result.email,
       name: result.name,
+      provider: "github",
     });
 
     console.log();
-    console.log(output.success(`Authenticated as ${result.email}`));
+    if (result.upgraded_from === "anonymous") {
+      console.log(output.success("Account upgraded from anonymous. Your personas and credits have been preserved."));
+    } else {
+      console.log(output.success(`Logged in as ${result.email}`));
+    }
     console.log(output.dim(`API key stored in ~/.sociologic/config.json`));
     console.log(output.dim(`Run \`sociologic install claude-code\` to set up MCP`));
   } catch (err) {

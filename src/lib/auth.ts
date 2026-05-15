@@ -13,6 +13,7 @@ interface DeviceTokenResponse {
   api_key?: string;
   email?: string;
   name?: string;
+  upgraded_from?: string;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -55,6 +56,7 @@ export async function pollDeviceToken(
   deviceCode: string,
   interval: number,
   expiresIn: number,
+  existingApiKey?: string,
 ): Promise<DeviceTokenResponse> {
   const baseUrl = getApiBaseUrl();
   const deadline = Date.now() + expiresIn * 1000;
@@ -63,13 +65,18 @@ export async function pollDeviceToken(
   while (Date.now() < deadline) {
     await sleep(pollInterval * 1000);
 
+    const bodyPayload: Record<string, string> = { device_code: deviceCode };
+    if (existingApiKey) {
+      bodyPayload.existing_api_key = existingApiKey;
+    }
+
     const response = await fetch(`${baseUrl}/api/v1/auth/device-token`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "User-Agent": "sociologic-cli/0.1.0",
       },
-      body: JSON.stringify({ device_code: deviceCode }),
+      body: JSON.stringify(bodyPayload),
     });
 
     if (!response.ok) {

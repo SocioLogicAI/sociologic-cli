@@ -26,7 +26,10 @@ export async function whoami(): Promise<void> {
     balanceStr = dim("(could not fetch)");
   }
 
+  const provider = config.provider || "unknown";
+
   console.log(bold("Email:   ") + (config.email ?? dim("(not set)")));
+  console.log(bold("Provider:") + " " + (provider === "anonymous" ? dim("anonymous (limited access)") : provider));
   console.log(bold("Key:     ") + keyPrefix);
   console.log(bold("Balance: ") + balanceStr);
 }
